@@ -48,8 +48,10 @@ int UserAuth::sendAcceptRequestPacket(PluginContext * context)
 {
 	list<RadiusServer> * serverlist;
 	list<RadiusServer>::iterator server;
+	std::string		zero("\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0", 16);
 	RadiusPacket		packet(ACCESS_REQUEST);
-	RadiusAttribute		ra1(ATTRIB_User_Name,this->getUsername().c_str()),
+	RadiusAttribute		ra0(ATTRIB_Message_Authenticator,zero),
+				ra1(ATTRIB_User_Name,this->getUsername().c_str()),
 				ra2(ATTRIB_User_Password),
 				ra3(ATTRIB_NAS_Port,this->getPortnumber()),
 				ra4(ATTRIB_Calling_Station_Id,this->getCallingStationId()),
@@ -72,8 +74,13 @@ int UserAuth::sendAcceptRequestPacket(PluginContext * context)
 	
 	if (DEBUG (context->getVerbosity()))
 		cerr << getTime() << "RADIUS-PLUGIN: Build password packet:  password: *****, sharedSecret: *****.\n";
-	
+
 	//add the attributes
+	if(packet.addRadiusAttribute(&ra0))
+	{
+		cerr << getTime() << "RADIUS-PLUGIN: Fail to add attribute ATTRIB_Message_Authenticator.\n";
+	}
+
 	ra2.setValue(this->password);
 	if(packet.addRadiusAttribute(&ra1))
 	{

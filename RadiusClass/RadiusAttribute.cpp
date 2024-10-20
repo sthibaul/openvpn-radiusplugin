@@ -382,6 +382,14 @@ int RadiusAttribute::setValue(char *value)
 				
 			}
 			break;
+		case	ATTRIB_Message_Authenticator:
+			if(!(this->value=new Octet [16]))
+			{
+				return ALLOC_ERROR;
+			}
+			memcpy(this->value, value, 16);
+			this->length=(Octet)16;
+			break;
 			
 		//for datatype integer/enum	
 		case	ATTRIB_NAS_Port:					 

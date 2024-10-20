@@ -36,11 +36,12 @@ private:
 	int 	retry; 				/**< The number of retries how many times a radius ticket is send to the server, if it doesn#t answer.*/
 	string sharedsecret;		/**< The sharedsecret, the maximum space is 16 chars.*/
 	int 	wait;				/**< The time to wait for a response of the server.*/
+	int 	requirema;			/**< Whether to required Message-Authenticator from the server.*/
 
 public:
 	
 	
-	RadiusServer(string name="127.0.0.1",string secret = "", int authport=1812, int acctport=1813, int retry=3, int wait=1);
+	RadiusServer(string name="127.0.0.1",string secret = "", int authport=1812, int acctport=1813, int retry=3, int wait=1, int requirema=-1);
 	~RadiusServer();
 	RadiusServer &operator=(const RadiusServer &);
 	
@@ -62,6 +63,9 @@ public:
 	string getName();
 	void setName(string);
 	
+	void setRequireMA(int);
+	int getRequireMA(void);
+
 	friend ostream& operator << (ostream& os, RadiusServer& server);
 };
 

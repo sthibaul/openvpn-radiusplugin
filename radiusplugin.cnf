@@ -97,6 +97,9 @@ server
 	wait=1
 	# The shared secret.
 	sharedsecret=testpw
+	# Whether to require Message-Authenticator (yes) or not (no), or require if first answer included it (auto)
+	# For better security against RadiusBLAST, set to yes once it is confirmed that your radius server always sends it
+	requirema=auto
 }
 
 #server
@@ -113,5 +116,8 @@ server
 #	wait=1
 #	# The shared secret.
 #	sharedsecret=testpw
+#	# Whether to require Message-Authenticator (yes) or not (no), or require if first answer included it (auto)
+#	# For better security against RadiusBLAST, set to yes once it is confirmed that your radius server always sends it
+#	requirema=auto
 #}
 

@@ -73,10 +73,13 @@ private:
 	
 	Octet				*sendbuffer;  			/**<Buffer for sending the packet over the network.*/
 	int					sendbufferlen; 			/**<Length of the buffer.*/
+	int					message_authenticator;	/**<Offset of the message authenticator digest, if any.*/
 	Octet				*recvbuffer;  			/**<Buffer for recveing the packet over the network.*/
 	int					recvbufferlen; 			/**<Length of the buffer.*/
 	void            	calcacctdigest(const char *secret); /**Method to generate the hash 
 	for the authenticator in Accounting-Requests.*/
+	void            	calcmadigest(const char *secret); /**Method to generate the hash 
+	for the message authenticator in Access-Requests.*/
 	
 	//private functions
 	void 			getRandom(int len, Octet *num);
@@ -101,7 +104,7 @@ public:
 	
 	int				getCode(void);
 	
-	int				authenticateReceivedPacket(const char *secret);
+	int				authenticateReceivedPacket(RadiusServer *server);
 	
 	pair<multimap<Octet,RadiusAttribute>::iterator,multimap<Octet,RadiusAttribute>::iterator> findAttributes(int type);
 	

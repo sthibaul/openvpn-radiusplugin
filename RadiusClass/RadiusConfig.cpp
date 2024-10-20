@@ -171,6 +171,17 @@ int RadiusConfig::parseConfigFile(const char * configfile)
 					{
 						tmpServer->setWait(atoi(line.substr(5).c_str()));
 					}
+					if (strncmp(line.c_str(),"requirema=",10)==0)
+					{
+						if (strcmp(line.substr(10).c_str(),"yes") == 0)
+							tmpServer->setRequireMA(1);
+						else if (strcmp(line.substr(10).c_str(),"no") == 0)
+							tmpServer->setRequireMA(0);
+						else if (strcmp(line.substr(10).c_str(),"auto") == 0)
+							tmpServer->setRequireMA(-1);
+						else
+							return PARSING_ERROR;
+					}
 				}
 				if(strstr(line.c_str(),"}"))
 				{

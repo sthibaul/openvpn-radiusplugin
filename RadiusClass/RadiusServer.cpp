@@ -32,13 +32,14 @@
 	 * @param int wait : The time (in seconds) to wait on a response of the radius server.
 	 */
 RadiusServer::RadiusServer(string name, string secret,
-	int authport,  int acctport, int retry, int wait)
+	int authport,  int acctport, int retry, int wait, int requirema)
 {
 	this->acctport=acctport;
 	this->authport=authport;
 	this->name=name;
 	this->retry=retry;
 	this->wait=wait;
+	this->requirema=requirema;
 	this->sharedsecret=secret;
 	
 	
@@ -62,6 +63,7 @@ RadiusServer &RadiusServer::operator=(const RadiusServer &s)
 	this->retry=s.retry;
 	this->acctport=s.acctport;
 	this->authport=s.authport;
+	this->requirema=s.requirema;
 	this->sharedsecret=s.sharedsecret;
 	return (*this);
 }
@@ -186,6 +188,24 @@ void RadiusServer::setWait(int w)
 	}
 }
 
+/** The getter method for the private member requirema
+ * @return A integer 0 when MA Message-Authenticator is not required, 1 if it
+ * is required, -1 if automatically determined from first answer.
+ */
+int RadiusServer::getRequireMA(void)
+{
+	return this->requirema;
+}
+
+
+/** The setter method for the private member requirema
+ * @param ma integer 0 when MA Message-Authenticator is not required, 1 if it
+ */
+void RadiusServer::setRequireMA(int ma)
+{
+	this->requirema=ma;
+}
+
 ostream& operator << (ostream& os, RadiusServer& server)
 {
      os << "\n\nRadiusServer:";
@@ -194,6 +214,7 @@ ostream& operator << (ostream& os, RadiusServer& server)
      os << "\nAccounting-Port: " << server.acctport;
      os << "\nRetries: " << server.retry;
      os << "\nWait: " << server.wait;
+     os << "\nRequireMA: " << server.requirema;
      os << "\nSharedSecret: *******";
  	return os;
  	

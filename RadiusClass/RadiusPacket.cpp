@@ -65,6 +65,7 @@ RadiusPacket::RadiusPacket(Octet code)
 	this->length=sizeof(Octet)*(RADIUS_PACKET_AUTHENTICATOR_LEN+4);
 	this->sendbuffer=NULL;
 	this->sendbufferlen=0;
+	this->message_authenticator=0;
 	this->recvbuffer=NULL;
 	this->recvbufferlen=0;
 	this->sock=0;
@@ -195,6 +196,12 @@ int RadiusPacket::shapeRadiusPacket(const char * sharedsecret)
 	//add the attributes to the buffer
 	for (multimap<Octet, RadiusAttribute>::iterator it = attribs.begin(); it != attribs.end(); it++)
 	{
+		if (it->second.getType()==ATTRIB_Message_Authenticator)
+		{
+			// Record offset for filling it below.
+			this->message_authenticator = this->sendbufferlen+2;
+		}
+
 		//if the attribute is a password, build the hashedpassword
 		if (it->second.getType()==ATTRIB_User_Password)
 		{
@@ -406,6 +413,11 @@ int RadiusPacket::radiusSend(list<RadiusServer>::iterator server)
 		this->calcacctdigest(server->getSharedSecret().c_str());
 	
 	}
+
+	if (this->code==ACCESS_REQUEST && this->message_authenticator)
+	{
+		this->calcmadigest(server->getSharedSecret().c_str());
+	}
 	
 	//save the authenticator field for packet authentication on receiving a packet
 	memcpy(this->authenticator, this->req_authenticator, 16);
@@ -526,7 +538,7 @@ int RadiusPacket::radiusReceive(list<RadiusServer> *serverlist)
 					return UNSHAPE_ERROR;
 				}
 				
-				if (this->authenticateReceivedPacket(server->getSharedSecret().c_str())!=0)
+				if (this->authenticateReceivedPacket(&*(server))!=0)
 				{
 					
 					return WRONG_AUTHENTICATOR_IN_RECV_PACKET;
@@ -599,6 +611,44 @@ void RadiusPacket::calcacctdigest(const char *secret)
 	gcry_md_close(context);
 }
 
+/** Sets the message authenticator field if the packet is
+ * an access request. It is a MD5 hash over the whole packet
+ * (the authenticator field itself is set to 0) with the shared
+ * secret used as Hmac key.
+ * The authenticator is updated in the message authenticator option.
+ * @param secret The shared secret of the server in plaintext.
+ */
+void RadiusPacket::calcmadigest(const char *secret)
+{
+	//Octet		digest[MD5_DIGEST_LENGTH];
+	gcry_md_hd_t	context;
+
+	//Zero out the auth_vector in the received packet.
+	//Then calculate the MD5 HMAC with the shared secret as key.
+
+	memset((this->sendbuffer+this->message_authenticator), 0, 16);
+	//build the hash
+	if (!gcry_control (GCRYCTL_ANY_INITIALIZATION_P))
+	{ /* No other library has already initialized libgcrypt. */
+
+	  gcry_control(GCRYCTL_SET_THREAD_CBS,&gcry_threads_pthread);
+
+	  if (!gcry_check_version (NEED_LIBGCRYPT_VERSION) )
+	    {
+		cerr << "libgcrypt is too old (need " << NEED_LIBGCRYPT_VERSION << ", have " << gcry_check_version (NULL) << ")\n";
+	    }
+	    /* Disable secure memory.  */
+          gcry_control (GCRYCTL_DISABLE_SECMEM, 0);
+	  gcry_control (GCRYCTL_INITIALIZATION_FINISHED);
+	}
+	gcry_md_open (&context, GCRY_MD_MD5, GCRY_MD_FLAG_HMAC);
+	gcry_md_setkey(context, secret, strlen(secret));
+	gcry_md_write(context, this->sendbuffer, this->length);
+	//copy the digest to the packet
+	memcpy(this->sendbuffer+this->message_authenticator, gcry_md_read(context, GCRY_MD_MD5), 16);
+	gcry_md_close(context);
+}
+
 
 /** Returns a pointer to the authenticator field.
  * @return A pointer to the authenticator field.
@@ -653,9 +703,11 @@ pair<multimap<Octet,RadiusAttribute>::iterator,multimap<Octet,RadiusAttribute>::
  * @return A an integer, 0 if the authenticator field is ok, else WRONG_AUTHENTICATOR_IN_RECV_PACKET.
  */
 
-int	RadiusPacket::authenticateReceivedPacket(const char *secret)
+int	RadiusPacket::authenticateReceivedPacket(RadiusServer *server)
 {
+	const char *secret = server->getSharedSecret().c_str();
 	gcry_md_hd_t	context;
+	int res;
 	
 	Octet * cpy_recvpacket;
 	//make a copy of the received packet 
@@ -684,21 +736,53 @@ int	RadiusPacket::authenticateReceivedPacket(const char *secret)
 	gcry_md_open (&context, GCRY_MD_MD5, 0);
 	gcry_md_write(context, cpy_recvpacket, this->recvbufferlen);
 	gcry_md_write(context, secret, strlen(secret));
-	
-	delete[] cpy_recvpacket;
-	
+
 	//compare the received and the built authenticator
-	if (memcmp(this->recvbuffer+4, gcry_md_read(context, GCRY_MD_MD5), 16)!=0)
+	res = memcmp(this->recvbuffer+4, gcry_md_read(context, GCRY_MD_MD5), 16);
+	gcry_md_close(context);
+
+	if (res!=0)
 	{
-		gcry_md_close(context);
+		//Failed
+		delete[] cpy_recvpacket;
 		return WRONG_AUTHENTICATOR_IN_RECV_PACKET;
 	}
-	else
-	{ 
+
+	if (server->getRequireMA() == -1)
+		//We did't know yet whether this server sends Message-Authenticator
+		server->setRequireMA(this->recvbuffer[20] == 80);
+
+	if (server->getRequireMA() == 1)
+	{
+		//This server normally sends Message-Authenticator, check that
+		if (this->recvbufferlen < 20 + 18 || this->recvbuffer[20] != 80 || this->recvbuffer[21] != 18)
+		{
+			//No MA!
+			delete[] cpy_recvpacket;
+			return WRONG_AUTHENTICATOR_IN_RECV_PACKET;
+		}
+
+		//Clear MA hash for computation
+		memset(cpy_recvpacket+20+2, 0, 16);
+		//Hash
+		gcry_md_open (&context, GCRY_MD_MD5, GCRY_MD_FLAG_HMAC);
+		gcry_md_setkey(context, secret, strlen(secret));
+		gcry_md_write(context, cpy_recvpacket, this->recvbufferlen);
+
+		//Compare
+		res = memcmp(this->recvbuffer+20+2, gcry_md_read(context, GCRY_MD_MD5), 16);
 		gcry_md_close(context);
-		return 0;
+
+		if (res != 0)
+		{
+			//Failed
+			delete[] cpy_recvpacket;
+			return WRONG_AUTHENTICATOR_IN_RECV_PACKET;
+		}
 	}
-		
+
+	delete[] cpy_recvpacket;
+	return 0;
 }
 
 
